@@ -39,10 +39,10 @@ add_library(VeriStoreDB_core
     src/db/database.cpp
 
     # Add subsystem source files here as they are created:
-    src/btree/btree.cpp
-    src/wal/wal.cpp
-    src/gitstore/gitstore.cpp
-    src/utils/file_utils.cpp
+    # src/btree/btree.cpp
+    # src/wal/wal.cpp
+    # src/gitstore/gitstore.cpp
+    # src/utils/file_utils.cpp
 )
 
 # Public include (for users of the library)
