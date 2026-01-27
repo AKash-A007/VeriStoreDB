@@ -2,9 +2,37 @@
 
 #include <string>
 #include <filesystem>
+#include <vector>
 
 namespace vsdb {
 
+enum class DataType{
+    INT,
+    FLOAT,
+    TEXT,
+    BOOL
+};
+struct Column{
+    std::string name;
+    DataType type;
+    bool primary_key = false;
+};
+
+struct TableSchema{
+    std::string table_name;
+    std::vector<Column> columns;
+    bool save_to_file(const std::filesystem::path& path) const;
+    static TableSchema load_from_file(const std::filesystem::path& path);
+};
+
+struct Record{
+    std::vector<std::string> values;
+};
+//---here we can define a Table class to manage records and schema---
+// class Table{
+// public:
+
+// };
 class Database {
 public:
     Database();
