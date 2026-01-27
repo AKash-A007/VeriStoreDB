@@ -2,44 +2,73 @@
 #include <CLI/CLI.hpp>
 #include <iostream>
 
-int main(int argc ,char **argv) {
-    CLI::App VeriStoreDB{"vsdb"} ;
-    
-    
-    
-    //init command 
-    auto* init = VeriStoreDB.add_subcommand("init","initialize a new VSDB database ");
+namespace vsdb {
 
-    //table insertion command
-    auto* insert_cmd = VeriStoreDB.add_subcommand("insert", "insert into the table");
-    std::string insert_table ;
+ParsedCommand CLIParser::parse(int argc, char** argv) {
+    CLI::App app{"VSDB - Version-controlled Database System"};
+    app.require_subcommand(1);
+    
+    ParsedCommand result;
+    
+    // INIT command
+    auto* init_cmd = app.add_subcommand("init", "Initialize a new VSDB database");
+    
+    // INSERT command
+    auto* insert_cmd = app.add_subcommand("insert", "Insert data into a table");
+    std::string insert_table;
     std::vector<std::string> insert_cols;
     std::vector<std::string> insert_vals;
-    insert_cmd->add_option("table",insert_table,"Table name")->required();
-    insert_cmd->add_option("--coloumns,-c",insert_cols,"Coloumn names"  );
-    insert_cmd->add_option("--values,-v",insert_vals,"values");
-
-    //select command
-    auto* select_cmd = VeriStoreDB.add_subcommand("select","Select data from a table");
+    insert_cmd->add_option("table", insert_table, "Table name")->required();
+    insert_cmd->add_option("--columns,-c", insert_cols, "Column names");
+    insert_cmd->add_option("--values,-v", insert_vals, "Values to insert");
+    
+    // SELECT command
+    auto* select_cmd = app.add_subcommand("select", "Select data from a table");
     std::string select_table;
-    select_cmd->add_option("table",select_table,"Table name")->required();
-
-    //commit command
-    /*DO A DEFAULT COMMIT MSG in if condition */
-    auto* commit_cmd = VeriStoreDB.add_subcommand("commit","Commit current changes");
+    select_cmd->add_option("table", select_table, "Table name")->required();
+    
+    // COMMIT command
+    auto* commit_cmd = app.add_subcommand("commit", "Commit current changes");
     std::string commit_msg;
-    commit_cmd->add_option("-m, --message",commit_msg,"Commit message")->required()
+    commit_cmd->add_option("-m,--message", commit_msg, "Commit message")->required();
     
-    //LOG command
-    auto* log_cmd = VeriStoreDB.add_subcommand("log","Show commit history");
-
-    //CHECKout command
-    auto* checkout_cmd = VeriStoreDB.add_subcommand("checkout","Checkout a specific commit");
+    // LOG command
+    auto* log_cmd = app.add_subcommand("log", "Show commit history");
+    
+    // CHECKOUT command
+    auto* checkout_cmd = app.add_subcommand("checkout", "Checkout a specific commit");
     std::string checkout_hash;
-    checkout_cmd->add_option("commit",checkout_hash,"Commit hash")->required();
+    checkout_cmd->add_option("commit", checkout_hash, "Commit hash")->required();
     
-    CLI11_PARSE(VeriStoreDB, argc,argv)
+    try {
+        app.parse(argc, argv);
+    } catch (const CLI::ParseError& e) {
+        app.exit(e);
+        return result;
+    }
     
-    if (VeriStoreDB.got_subcommand(init)) {std::cout << "initillizedaaa\n";};
-    return 0;
+    // Determine which command was called
+    if (app.got_subcommand(init_cmd)) {
+        result.cmd = Command::INIT;
+    } else if (app.got_subcommand(insert_cmd)) {
+        result.cmd = Command::INSERT;
+        result.table_name = insert_table;
+        result.columns = insert_cols;
+        result.values = insert_vals;
+    } else if (app.got_subcommand(select_cmd)) {
+        result.cmd = Command::SELECT;
+        result.table_name = select_table;
+    } else if (app.got_subcommand(commit_cmd)) {
+        result.cmd = Command::COMMIT;
+        result.commit_message = commit_msg;
+    } else if (app.got_subcommand(log_cmd)) {
+        result.cmd = Command::LOG;
+    } else if (app.got_subcommand(checkout_cmd)) {
+        result.cmd = Command::CHECKOUT;
+        result.commit_hash = checkout_hash;
+    }
+    
+    return result;
 }
+
+} // namespace vsdb
