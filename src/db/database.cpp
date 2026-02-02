@@ -1,12 +1,150 @@
 #include "db/database.h"
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <chrono>
 #include <iomanip>
-#include <sstream>
 
 namespace vsdb {
 
+// TableSchema Implementation
+bool TableSchema::save_to_file(const std::filesystem::path& path) const {
+    std::ofstream file(path);
+    if (!file.is_open()) return false;
+    
+    file << table_name << "\n";
+    file << columns.size() << "\n";
+    
+    for (const auto& col : columns) {
+        file << col.name << ","
+             << static_cast<int>(col.type) << ","
+             << col.primary_key << "\n";
+    }
+    
+    return true;
+}
+
+TableSchema TableSchema::load_from_file(const std::filesystem::path& path) {
+    TableSchema schema;
+    std::ifstream file(path);
+    
+    std::getline(file, schema.table_name);
+    
+    size_t num_columns;
+    file >> num_columns;
+    file.ignore();
+    
+    for (size_t i = 0; i < num_columns; ++i) {
+        std::string line;
+        std::getline(file, line);
+        std::stringstream ss(line);
+        
+        Column col;
+        std::string type_str, pk_str;
+        
+        std::getline(ss, col.name, ',');
+        std::getline(ss, type_str, ',');
+        std::getline(ss, pk_str, ',');
+        
+        col.type = static_cast<DataType>(std::stoi(type_str));
+        col.primary_key = (pk_str == "1");
+        
+        schema.columns.push_back(col);
+    }
+    
+    return schema;
+}
+
+// Table Implementation
+Table::Table(const std::string& name, const TableSchema& schema)
+    : name_(name), schema_(schema) {
+}
+
+bool Table::insert(const Record& record) {
+    if (record.values.size() != schema_.columns.size()) {
+        std::cerr << "Error: Column count mismatch\n";
+        return false;
+    }
+    records_.push_back(record);
+    return true;
+}
+
+std::vector<Record> Table::select_all() const {
+    return records_;
+}
+
+std::filesystem::path Table::get_schema_path(const std::filesystem::path& data_dir) const {
+    return data_dir / (name_ + ".schema");
+}
+
+std::filesystem::path Table::get_data_path(const std::filesystem::path& data_dir) const {
+    return data_dir / (name_ + ".data");
+}
+
+bool Table::save_to_disk(const std::filesystem::path& data_dir) {
+    // Save schema
+    if (!schema_.save_to_file(get_schema_path(data_dir))) {
+        return false;
+    }
+    
+    // Save data
+    std::ofstream data_file(get_data_path(data_dir));
+    if (!data_file.is_open()) return false;
+    
+    data_file << records_.size() << "\n";
+    
+    for (const auto& record : records_) {
+        for (size_t i = 0; i < record.values.size(); ++i) {
+            data_file << record.values[i];
+            if (i < record.values.size() - 1) {
+                data_file << ",";
+            }
+        }
+        data_file << "\n";
+    }
+    
+    return true;
+}
+
+std::unique_ptr<Table> Table::load_from_disk(
+    const std::filesystem::path& data_dir,
+    const std::string& table_name
+) {
+    std::filesystem::path schema_path = data_dir / (table_name + ".schema");
+    std::filesystem::path data_path = data_dir / (table_name + ".data");
+    
+    if (!std::filesystem::exists(schema_path)) {
+        return nullptr;
+    }
+    
+    TableSchema schema = TableSchema::load_from_file(schema_path);
+    auto table = std::make_unique<Table>(table_name, schema);
+    
+    if (std::filesystem::exists(data_path)) {
+        std::ifstream data_file(data_path);
+        size_t num_records;
+        data_file >> num_records;
+        data_file.ignore();
+        
+        for (size_t i = 0; i < num_records; ++i) {
+            std::string line;
+            std::getline(data_file, line);
+            std::stringstream ss(line);
+            
+            Record record;
+            std::string value;
+            while (std::getline(ss, value, ',')) {
+                record.values.push_back(value);
+            }
+            
+            table->insert(record);
+        }
+    }
+    
+    return table;
+}
+
+// Database Implementation
 Database::Database() 
     : db_root_(std::filesystem::current_path()) {
 }
@@ -62,7 +200,6 @@ bool Database::create_config_file() {
             return false;
         }
         
-        // Get current timestamp
         auto now = std::chrono::system_clock::now();
         auto time_t = std::chrono::system_clock::to_time_t(now);
         
@@ -79,6 +216,101 @@ bool Database::create_config_file() {
         std::cerr << "Error creating config file: " << e.what() << "\n";
         return false;
     }
+}
+
+bool Database::load_tables() {
+    std::filesystem::path data_dir = db_root_ / "data";
+    
+    if (!std::filesystem::exists(data_dir)) {
+        return true;
+    }
+    
+    for (const auto& entry : std::filesystem::directory_iterator(data_dir)) {
+        if (entry.path().extension() == ".schema") {
+            std::string table_name = entry.path().stem().string();
+            auto table = Table::load_from_disk(data_dir, table_name);
+            
+            if (table) {
+                tables_[table_name] = std::move(table);
+            }
+        }
+    }
+    
+    return true;
+}
+
+bool Database::create_table(const std::string& name, const std::vector<Column>& columns) {
+    if (!is_initialized()) {
+        std::cerr << "Error: Database not initialized\n";
+        return false;
+    }
+    
+    if (table_exists(name)) {
+        std::cerr << "Error: Table '" << name << "' already exists\n";
+        return false;
+    }
+    
+    TableSchema schema;
+    schema.table_name = name;
+    schema.columns = columns;
+    
+    auto table = std::make_shared<Table>(name, schema);
+    
+    if (!table->save_to_disk(db_root_ / "data")) {
+        std::cerr << "Error: Failed to save table to disk\n";
+        return false;
+    }
+    
+    tables_[name] = table;
+    
+    std::cout << "Table '" << name << "' created successfully\n";
+    return true;
+}
+
+bool Database::table_exists(const std::string& name) const {
+    return tables_.find(name) != tables_.end();
+}
+
+std::shared_ptr<Table> Database::get_table(const std::string& name) {
+    if (!table_exists(name)) {
+        // Try to load from disk
+        auto table = Table::load_from_disk(db_root_ / "data", name);
+        if (table) {
+            tables_[name] = std::move(table);
+        }
+    }
+    
+    auto it = tables_.find(name);
+    return (it != tables_.end()) ? it->second : nullptr;
+}
+
+bool Database::insert_into(const std::string& table_name, const Record& record) {
+    auto table = get_table(table_name);
+    if (!table) {
+        std::cerr << "Error: Table '" << table_name << "' does not exist\n";
+        return false;
+    }
+    
+    if (!table->insert(record)) {
+        return false;
+    }
+    
+    if (!table->save_to_disk(db_root_ / "data")) {
+        std::cerr << "Error: Failed to save table to disk\n";
+        return false;
+    }
+    
+    return true;
+}
+
+std::vector<Record> Database::select_from(const std::string& table_name) {
+    auto table = get_table(table_name);
+    if (!table) {
+        std::cerr << "Error: Table '" << table_name << "' does not exist\n";
+        return {};
+    }
+    
+    return table->select_all();
 }
 
 } // namespace vsdb
