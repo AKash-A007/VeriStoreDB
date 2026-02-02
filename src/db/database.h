@@ -3,6 +3,8 @@
 #include <string>
 #include <filesystem>
 #include <vector>
+#include <unordered_map>
+#include <memory>
 
 namespace vsdb {
 
@@ -29,28 +31,54 @@ struct Record{
     std::vector<std::string> values;
 };
 //---here we can define a Table class to manage records and schema---
-// class Table{
-// public:
-
-// };
+class Table {
+public:
+    Table(const std::string& name, const TableSchema& schema);
+    
+    bool insert(const Record& record);
+    std::vector<Record> select_all() const;
+    
+    const TableSchema& get_schema() const { return schema_; }
+    std::string get_name() const { return name_; }
+    
+    bool save_to_disk(const std::filesystem::path& data_dir);
+    static std::unique_ptr<Table> load_from_disk(
+        const std::filesystem::path& data_dir, 
+        const std::string& table_name
+    );
+    
+private:
+    std::string name_;
+    TableSchema schema_;
+    std::vector<Record> records_;
+    
+    std::filesystem::path get_schema_path(const std::filesystem::path& data_dir) const;
+    std::filesystem::path get_data_path(const std::filesystem::path& data_dir) const;
+};
 class Database {
 public:
     Database();
     
-    // Initialize database structure
     bool initialize();
-    
-    // Check if database is already initialized
     bool is_initialized() const;
-    
-    // Get database root path
     std::filesystem::path get_db_path() const;
+    
+    // Table management
+    bool create_table(const std::string& name, const std::vector<Column>& columns);
+    bool table_exists(const std::string& name) const;
+    std::shared_ptr<Table> get_table(const std::string& name);
+    
+    // Data operations
+    bool insert_into(const std::string& table_name, const Record& record);
+    std::vector<Record> select_from(const std::string& table_name);
     
 private:
     std::filesystem::path db_root_;
+    std::unordered_map<std::string, std::shared_ptr<Table>> tables_;
     
     bool create_directory_structure();
     bool create_config_file();
+    bool load_tables();
 };
 
 } // namespace vsdb
