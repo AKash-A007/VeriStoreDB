@@ -1,36 +1,39 @@
 #pragma once
 
 #include <string>
-#include <filesystem>
 #include <vector>
+#include <filesystem>
 #include <unordered_map>
 #include <memory>
+#include "gitstore/gitstore.h"
 
 namespace vsdb {
 
-enum class DataType{
+enum class DataType {
     INT,
     FLOAT,
     TEXT,
     BOOL
 };
-struct Column{
+
+struct Column {
     std::string name;
     DataType type;
     bool primary_key = false;
 };
 
-struct TableSchema{
+struct TableSchema {
     std::string table_name;
     std::vector<Column> columns;
+    
     bool save_to_file(const std::filesystem::path& path) const;
     static TableSchema load_from_file(const std::filesystem::path& path);
 };
 
-struct Record{
+struct Record {
     std::vector<std::string> values;
 };
-//---here we can define a Table class to manage records and schema---
+
 class Table {
 public:
     Table(const std::string& name, const TableSchema& schema);
@@ -55,6 +58,7 @@ private:
     std::filesystem::path get_schema_path(const std::filesystem::path& data_dir) const;
     std::filesystem::path get_data_path(const std::filesystem::path& data_dir) const;
 };
+
 class Database {
 public:
     Database();
@@ -72,9 +76,15 @@ public:
     bool insert_into(const std::string& table_name, const Record& record);
     std::vector<Record> select_from(const std::string& table_name);
     
+    // Version control operations
+    std::string commit(const std::string& message);
+    std::vector<Commit> get_log();
+    bool checkout(const std::string& commit_hash);
+    
 private:
     std::filesystem::path db_root_;
     std::unordered_map<std::string, std::shared_ptr<Table>> tables_;
+    std::unique_ptr<GitStore> git_store_;
     
     bool create_directory_structure();
     bool create_config_file();

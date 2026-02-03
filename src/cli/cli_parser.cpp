@@ -13,6 +13,13 @@ ParsedCommand CLIParser::parse(int argc, char** argv) {
     // INIT command
     auto* init_cmd = app.add_subcommand("init", "Initialize a new VSDB database");
     
+    // CREATE TABLE command
+    auto* create_cmd = app.add_subcommand("create", "Create a new table");
+    std::string create_table;
+    std::vector<std::string> create_cols;
+    create_cmd->add_option("table", create_table, "Table name")->required();
+    create_cmd->add_option("--columns,-c", create_cols, "Column definitions (name:type)")->required();
+    
     // INSERT command
     auto* insert_cmd = app.add_subcommand("insert", "Insert data into a table");
     std::string insert_table;
@@ -50,6 +57,10 @@ ParsedCommand CLIParser::parse(int argc, char** argv) {
     // Determine which command was called
     if (app.got_subcommand(init_cmd)) {
         result.cmd = Command::INIT;
+    } else if (app.got_subcommand(create_cmd)) {
+        result.cmd = Command::CREATE_TABLE;
+        result.table_name = create_table;
+        result.columns = create_cols;
     } else if (app.got_subcommand(insert_cmd)) {
         result.cmd = Command::INSERT;
         result.table_name = insert_table;

@@ -147,6 +147,10 @@ std::unique_ptr<Table> Table::load_from_disk(
 // Database Implementation
 Database::Database() 
     : db_root_(std::filesystem::current_path()) {
+    if (is_initialized()) {
+        git_store_ = std::make_unique<GitStore>(db_root_ / "objects");
+        load_tables();
+    }
 }
 
 bool Database::is_initialized() const {
@@ -177,6 +181,8 @@ bool Database::initialize() {
     std::cout << "Created directories:\n";
     std::cout << "  - data/      (for table data storage)\n";
     std::cout << "  - objects/   (for version control objects)\n";
+    
+    git_store_ = std::make_unique<GitStore>(db_root_ / "objects");
     
     return true;
 }
@@ -311,6 +317,48 @@ std::vector<Record> Database::select_from(const std::string& table_name) {
     }
     
     return table->select_all();
+}
+
+std::string Database::commit(const std::string& message) {
+    if (!git_store_) {
+        std::cerr << "Error: Git store not initialized\n";
+        return "";
+    }
+    
+    std::string commit_hash = git_store_->commit(message, db_root_ / "data");
+    
+    if (!commit_hash.empty()) {
+        std::cout << "Committed successfully\n";
+        std::cout << "Commit hash: " << commit_hash << "\n";
+    }
+    
+    return commit_hash;
+}
+
+std::vector<Commit> Database::get_log() {
+    if (!git_store_) {
+        return {};
+    }
+    
+    return git_store_->get_log();
+}
+
+bool Database::checkout(const std::string& commit_hash) {
+    if (!git_store_) {
+        std::cerr << "Error: Git store not initialized\n";
+        return false;
+    }
+    
+    if (git_store_->checkout(commit_hash, db_root_ / "data")) {
+        // Reload tables from disk
+        tables_.clear();
+        load_tables();
+        
+        std::cout << "Checked out commit " << commit_hash << "\n";
+        return true;
+    }
+    
+    return false;
 }
 
 } // namespace vsdb

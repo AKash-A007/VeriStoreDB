@@ -8,6 +8,7 @@ namespace vsdb {
 enum class Command {
     NONE,
     INIT,
+    CREATE_TABLE,
     INSERT,
     SELECT,
     COMMIT,
